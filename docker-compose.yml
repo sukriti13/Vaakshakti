@@ -1,0 +1,173 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: vaakshakti_db
+      POSTGRES_USER: vaakshakti_user
+      POSTGRES_PASSWORD: setidure
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaakshakti_user -d vaakshakti_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Celery
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    image: sukriti132/vaakshakti-backend:latest
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vaakshakti_user:setidure@postgres/vaakshakti_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=G6WE-FiLEbCtdgA7dXq0bYLkKWEGZUf5jTlB22D78Dg
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # React Frontend
+  frontend:
+    image: sukriti132/vaakshakti-frontend:latest
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+  # Celery Workers
+  celery-transcription:
+    image: sukriti132/vaakshakti-backend:latest
+    command: celery -A celery_app worker --loglevel=info --queues=transcription --concurrency=2 --prefetch-multiplier=1 --hostname=transcription@%h
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vaakshakti_user:setidure@postgres/vaakshakti_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  celery-audio:
+    image: sukriti132/vaakshakti-backend:latest
+    command: celery -A celery_app worker --loglevel=info --queues=audio_processing --concurrency=2 --prefetch-multiplier=1 --hostname=audio@%h
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vaakshakti_user:setidure@postgres/vaakshakti_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  celery-text:
+    image: sukriti132/vaakshakti-backend:latest
+    command: celery -A celery_app worker --loglevel=info --queues=text_analysis --concurrency=3 --prefetch-multiplier=1 --hostname=text@%h
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vaakshakti_user:setidure@postgres/vaakshakti_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  celery-llm:
+    image: sukriti132/vaakshakti-backend:latest
+    command: celery -A celery_app worker --loglevel=info --queues=llm_feedback --concurrency=2 --prefetch-multiplier=1 --hostname=llm@%h
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vaakshakti_user:setidure@postgres/vaakshakti_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  celery-aggregation:
+    image: sukriti132/vaakshakti-backend:latest
+    command: celery -A celery_app worker --loglevel=info --queues=aggregation --concurrency=1 --prefetch-multiplier=1 --hostname=aggregation@%h
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vaakshakti_user:setidure@postgres/vaakshakti_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  celery-notifications:
+    image: sukriti132/vaakshakti-backend:latest
+    command: celery -A celery_app worker --loglevel=info --queues=notifications --concurrency=1 --prefetch-multiplier=1 --hostname=notifications@%h
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vaakshakti_user:setidure@postgres/vaakshakti_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
