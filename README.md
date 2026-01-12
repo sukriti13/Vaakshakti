@@ -6,8 +6,8 @@
 1.  git clone https://github.com/sukriti13/Vaakshakti.git
 2.  cd Vaakshakti/
 3.  docker compose pull
-4. docker compose up -d
+4.  docker compose up --build -d
 
 **To access Vaakshakti**
- http://localhost:8080
+http://localhost:8080
   
